@@ -404,11 +404,9 @@ void robot_t::cartesian2Angle(float x, float y, float z)
 
 bool robot_t::moveToTarget(float* targetP, float speed, int cylclePeriod){
     float x,y,z;
-    Serial.println("            MOVING TO TARGET");
     if(robot.rel_x< targetP[0]+POS_MARGIN && (robot.rel_x> targetP[0]-POS_MARGIN)){
 		if(robot.rel_y < targetP[1]+POS_MARGIN && robot.rel_y > targetP[1]-POS_MARGIN){
 			if(robot.rel_z < targetP[2]+POS_MARGIN && robot.rel_z > targetP[2]-POS_MARGIN){
-                Serial.println("            ALREADY HERE!");
 			return true;
             }
 
@@ -421,6 +419,7 @@ bool robot_t::moveToTarget(float* targetP, float speed, int cylclePeriod){
 	float sUnit[3] = {sVec[0]/sMod, sVec[1]/sMod, sVec[2]/sMod};
 	// Serial.printf("   SUnit: %.6f %.6f %.6f", sUnit[0], sUnit[1], sUnit[2]);
 
+    Serial.println("            MOVING TO TARGET");
 	speed = (speed*powf(E, sMod*0.025) > 150) ? 150 : speed*powf(E, sMod*0.025);
     Serial.print("              Speed is: ");
     Serial.println(speed);

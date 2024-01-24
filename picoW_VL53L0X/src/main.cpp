@@ -19,6 +19,7 @@
 #define FARM_PIN  13
 #define CLAW_PIN  15
 #define SQUARE(x) (x*x)
+#define BUFFER_MAX_SIZE 20
 VL53L0X tof;
 float distance, prev_distance;
 
@@ -28,11 +29,22 @@ int LED_state;
 unsigned long interval;
 unsigned long currentMicros, previousMicros;
 int loop_count;
-float speed = 5;
+float speed = 20;
 float CurrPos[3];
 float targetPos[3];
 int cycle;
 
+typedef struct{  
+  String command = "";
+  float value[4] = {0,0,0};
+}serialCommand_t;
+
+serialCommand_t serialCommand;
+
+String buff;
+int count = 0;
+
+void processChar(char b);
 
 void setup() 
 {
@@ -76,23 +88,36 @@ void loop()
   
     b = Serial.read();    
     Serial.write(b);
-    if(b == '7'){
-      targetPos[0]=100;
-	    targetPos[1]=50;
-	    targetPos[2]=40;
-    }
-    if(b == '8'){
-      targetPos[0]=80;
-	    targetPos[1]=-20;
-	    targetPos[2]=90;
-    }
-    robot.sendCommand(b);
+    // if(b == '7'){
+    //   targetPos[0]=100;
+	  //   targetPos[1]=50;
+	  //   targetPos[2]=40;
+    // }
+    // if(b == '8'){
+    //   targetPos[0]=80;
+	  //   targetPos[1]=-20;
+	  //   targetPos[2]=90;
+    // }
+    processChar(b);
+    // robot.sendCommand(b);
     
   } 
   currentMicros = micros();
 
   // THE Control Loop
   if (currentMicros - previousMicros >= interval) {
+    Serial.print(" cmd: ");
+    if(buff.length() > 0) Serial.print(buff);
+    Serial.print(" Command: ");
+    Serial.print(serialCommand.command);
+    Serial.print(" Value1: ");
+    Serial.print(serialCommand.value[0]);
+    Serial.print(" Value2: ");
+    Serial.print(serialCommand.value[1]);
+    Serial.print(" Value3: ");
+    Serial.print(serialCommand.value[2]);
+    Serial.print(" Value4: ");
+    Serial.print(serialCommand.value[3]);
     previousMicros = currentMicros;
 
     if (tof.readRangeAvailable()) {
@@ -112,39 +137,39 @@ void loop()
     }
 
      
-     robot.moveToTarget(targetPos,speed,cycle);
+    robot.moveToTarget(targetPos,speed,cycle);
     
     
 
-    Serial.print(" tof: ");
-    Serial.print(distance, 3);
+    // Serial.print(" tof: ");
+    // Serial.print(distance, 3);
 
-    Serial.print("  mode: ");
-    Serial.print(robot.mode);
+    // Serial.print("  mode: ");
+    // Serial.print(robot.mode);
 
-    Serial.print("  step: ");
-    Serial.print(robot.step);
+    // Serial.print("  step: ");
+    // Serial.print(robot.step);
 
-    Serial.print("  base_pwm: ");
-    Serial.print(robot.pwm_base);
+    // Serial.print("  base_pwm: ");
+    // Serial.print(robot.pwm_base);
 
-    Serial.print("  arm_pwm: ");
-    Serial.print(robot.pwm_arm);
+    // Serial.print("  arm_pwm: ");
+    // Serial.print(robot.pwm_arm);
 
-    Serial.print("  farm_pwm: ");
-    Serial.print(robot.pwm_farm);
+    // Serial.print("  farm_pwm: ");
+    // Serial.print(robot.pwm_farm);
 
-    Serial.print("  claw_pwm: ");
-    Serial.print(robot.pwm_claw);
+    // Serial.print("  claw_pwm: ");
+    // Serial.print(robot.pwm_claw);
 
-    Serial.print("  ang_b: ");
-    Serial.print(robot.rad2Degree(robot.ang_base));
+    // Serial.print("  ang_b: ");
+    // Serial.print(robot.rad2Degree(robot.ang_base));
 
-    Serial.print("  ang_a: ");
-    Serial.print(robot.rad2Degree(robot.ang_arm));
+    // Serial.print("  ang_a: ");
+    // Serial.print(robot.rad2Degree(robot.ang_arm));
 
-    Serial.print("  ang_f: ");
-    Serial.print(robot.rad2Degree(robot.ang_farm));
+    // Serial.print("  ang_f: ");
+    // Serial.print(robot.rad2Degree(robot.ang_farm));
 
     Serial.print("  x_rel: ");
     Serial.print(robot.rel_x);
@@ -156,5 +181,54 @@ void loop()
     Serial.print(robot.rel_z);
 
     Serial.println();
+  }
+}
+
+
+void processChar(char b){
+  switch (b)
+  {
+  case '\b':
+    count = 0;
+    Serial.println("Backspace");
+    buff = "";
+    serialCommand.command = "";
+    serialCommand.value[0] = 0;
+    serialCommand.value[1] = 0;
+    serialCommand.value[2] = 0;
+    serialCommand.value[3] = 0;
+
+    break;
+  
+  case '\n':
+    
+    Serial.println("Enter");
+    serialCommand.value[count-1] = buff.toFloat();
+    targetPos[0] = serialCommand.value[0];
+    targetPos[1] = serialCommand.value[1];
+    targetPos[2] = serialCommand.value[2];
+    count = 0;
+    buff = "";
+    break;
+
+  case 0x20:
+    if(count>0) {buff = ""; break;}
+    Serial.print("Space: ");
+    serialCommand.command = buff;
+    Serial.println(serialCommand.command);
+    buff = "";
+    count++;
+    break;
+  
+  case ',':
+    if(count>3) {buff = ""; break;}
+    serialCommand.value[count-1] = buff.toFloat();
+    count++;
+    buff = "";
+    break;
+
+  default:
+    buff.concat(b);
+    break;
   }
 }
