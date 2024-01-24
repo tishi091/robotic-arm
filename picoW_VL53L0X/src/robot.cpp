@@ -23,7 +23,7 @@ robot_t::robot_t()
     ang_arm = PI/2;
     pwm_farm = 2070;
     ang_farm = 0;
-    pwm_claw = 1600;
+    pwm_claw = 560; //570 to 1630
 
     step = 11;
 }
@@ -74,6 +74,14 @@ void robot_t::sendCommand(char command)
         
         case 'k':
         robot.moveDownward();
+        break;
+        
+        case 'o':
+        robot.openClaw();
+        break;
+        
+        case 'p':
+        robot.closeClaw();
         break;
         
         case '+':
@@ -176,7 +184,7 @@ void robot_t::setServos(void){
     ang_arm = PI/2;
     pwm_farm = 2070;
     ang_farm = 0;
-    pwm_claw = 1600;
+    pwm_claw = 560;
     rel_x = 80;
     rel_y = 0;
     rel_z = 138;
@@ -418,11 +426,7 @@ bool robot_t::moveToTarget(float* targetP, float speed, int cylclePeriod){
 	// Serial.printf("   SMod: %.6f", sMod); 
 	float sUnit[3] = {sVec[0]/sMod, sVec[1]/sMod, sVec[2]/sMod};
 	// Serial.printf("   SUnit: %.6f %.6f %.6f", sUnit[0], sUnit[1], sUnit[2]);
-
-    Serial.println("            MOVING TO TARGET");
 	speed = (speed*powf(E, sMod*0.025) > 150) ? 150 : speed*powf(E, sMod*0.025);
-    Serial.print("              Speed is: ");
-    Serial.println(speed);
 
 	x= sUnit[0]*speed*1e-3*cylclePeriod + robot.rel_x;
     y = sUnit[1]*speed*1e-3*cylclePeriod + robot.rel_y;
