@@ -1,18 +1,16 @@
-// 2022 Paulo Costa
-// Pico W LED access
 
+#include <SPI.h>
+#include <Adafruit_TCS34725.h>
 #include <Arduino.h>
-//#include <WiFi.h>
-
-//#include "pico/cyw43_arch.h"
-
 #include <Servo.h>
 #include <Wire.h>
 #include <VL53L0X.h>
-
+#include "commands.h"
 
 #define TOF_SDA 16
 #define TOF_SCL 17
+#define RGB_SDA 2
+#define RGB_SCL 3
 
 #define BASE_PIN   9
 #define ARM_PIN   11
@@ -36,11 +34,12 @@ float sensorPos[3];
 float GreenPos[3];
 float RedPos[3];
 float BluePos[3];
+float initpos[3];
 int targetComplete = 0;
 int numTargets = 0;
 int cycle;
 int mode;
-bool reached, c_open;
+bool reached, c_open, start;
 int color;
 typedef struct{  
   String command = "";
@@ -55,7 +54,7 @@ typedef struct {
   // tis - time in state
   unsigned long tes, tis;
 } fsm_t;
-
+Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_24MS, TCS34725_GAIN_1X);
 void set_state(fsm_t& fsm, int new_state)
 {
   if (fsm.state != new_state) {  // if the state chnanged tis is reset
@@ -63,6 +62,13 @@ void set_state(fsm_t& fsm, int new_state)
     fsm.tes = millis();
     fsm.tis = 0;
   }
+}
+void getRawData_noDelay(uint16_t *r, uint16_t *g, uint16_t *b, uint16_t *c)
+{
+  *c = tcs.read16(TCS34725_CDATAL);
+  *r = tcs.read16(TCS34725_RDATAL);
+  *g = tcs.read16(TCS34725_GDATAL);
+  *b = tcs.read16(TCS34725_BDATAL);
 }
 
 fsm_t fsm1, fsm2, fsm3, fsm4;
@@ -78,7 +84,6 @@ void clearLastPos(void);
 
 void setup() 
 {
-  robot.setServos();
   robot.base.attach(BASE_PIN, 530, 2400);   // Base Servo 760(Left -60º) - 2225(Right 60º)
   robot.arm.attach(ARM_PIN, 970, 2450);     // Arm Servo 970(Backward 120º) - 2440(Forward 0º)
   robot.farm.attach(FARM_PIN, 870, 2100);   // Forearm Servo 2070(Downward 0º) - 910(Upward 90º)
@@ -86,8 +91,10 @@ void setup()
   cycle=40;
   interval = 40*1000;
   mode=0;
+  color=0;
   c_open=true;
   reached=false;
+  start=false;
   Serial.begin(115200);
  
 
@@ -96,18 +103,39 @@ void setup()
 
   Wire.begin();
 
+  Wire1.setSDA(RGB_SDA);  // Connect TCS34725 SDA to gpio 20
+  Wire1.setSCL(RGB_SCL);  // Connect TCS34725 SCL to gpio 21
+
+  Wire1.begin();
+
   tof.setTimeout(500);
   while (!tof.init()) {
     Serial.println(F("Failed to detect and initialize VL53L0X!"));
     delay(100);
-  }  
+  } 
+   
 
+  while (!tcs.begin(TCS34725_ADDRESS, &Wire1)) {
+    Serial.println("No TCS34725 found ... check your connections");
+    delay(500);
+  }
   // Start new distance measure
   tof.startReadRangeMillimeters();  
   targetPos[0]=robot.rel_x;
 	targetPos[1]=robot.rel_y;
 	targetPos[2]=robot.rel_z;
-
+  // sensorPos[0]=36.00;
+  // sensorPos[1]=-86.00;
+  // sensorPos[2]=82.00;
+  sensorPos[0]=21.00;
+  sensorPos[1]=-78.00;
+  sensorPos[2]=103.00;
+  RedPos[0]=48.00;
+  RedPos[1]=126.00;
+  RedPos[2]=75.00;
+  initpos[0]=80;
+  initpos[1]=0;
+  initpos[2]=138;
   // Start all state machines
   set_state(fsm1, 0);
   set_state(fsm2, 0);
@@ -115,6 +143,7 @@ void setup()
   set_state(fsm4, 0);
  
   
+  robot.setServos();
 }
 
 
@@ -128,7 +157,12 @@ void loop()
     b = Serial.read();    
     Serial.write(b);
 
-    if(b == '\t') serialCommand.on = !serialCommand.on;
+    if(b == '\t') {
+      serialCommand.on = !serialCommand.on;
+      targetPos[0] = 80;
+      targetPos[1] = 0;
+      targetPos[2] = 138;
+      }
 
     if(!serialCommand.on) robot.sendCommand(b);
     else if(b != '\t') processChar(b);
@@ -139,7 +173,12 @@ void loop()
 
   // THE Control Loop
   if (currentMicros - previousMicros >= interval) {
-    
+    uint16_t r, g, b, c, colorTemp, lux;
+    //tcs.getRawData(&r, &g, &b, &c);
+      getRawData_noDelay(&r, &g, &b, &c);
+      // colorTemp = tcs.calculateColorTemperature(r, g, b);
+      colorTemp = tcs.calculateColorTemperature_dn40(r, g, b, c);
+      lux = tcs.calculateLux(r, g, b);
 
     // if(serialCommand.command.equals("op1") || (serialCommand.command.equals("go") && dataProcessed == 0)){
     //   if(robot.moveToTarget(targetPos,speed,cycle)) {
@@ -168,10 +207,163 @@ void loop()
       loop_count = 0;
     }
     unsigned long cur_time = millis();   // Just one call to millis()
-      fsm1.tis = cur_time - fsm1.tes;
-      fsm2.tis = cur_time - fsm2.tes;
-      fsm3.tis = cur_time - fsm3.tes;
-      fsm4.tis = cur_time - fsm4.tes;
+
+    fsm1.tis = cur_time - fsm1.tes;
+    fsm2.tis = cur_time - fsm2.tes;
+    fsm3.tis = cur_time - fsm3.tes;
+    fsm4.tis = cur_time - fsm4.tes;
+
+
+    //Mode State machine 1
+    if(fsm1.state==0 && serialCommand.command.equals("1")){
+      
+      fsm1.new_state=1;
+    }
+    else if(fsm1.state==0 && serialCommand.command.equals("2")){
+      fsm1.new_state=2;
+    }
+    else if(fsm1.state==0 && serialCommand.command.equals("3")){
+      fsm1.new_state=3;
+    }
+    else if((fsm1.state==1 && serialCommand.command.equals("end"))||(fsm1.state==2 && serialCommand.command.equals("end"))||(fsm1.state==3 && serialCommand.command.equals("end"))){
+      fsm1.new_state=0;
+    }
+
+    //Basic Mode State machine 2
+    if(fsm2.state==0 && fsm1.state==1){
+      fsm2.new_state=1;
+    }
+    else if(fsm2.state==1 && start){
+      setPosition();
+      fsm2.new_state=2;
+    }
+    else if(fsm2.state== 1 && serialCommand.command.equals("stop")){
+      fsm2.new_state=0;
+    }
+    else if(fsm2.state==2 && fsm3.state==5){
+      fsm2.new_state=1;
+    }
+
+    //Move State machine 3
+    if(fsm3.state==0 && fsm2.state==2){
+      fsm3.new_state=1;
+    }
+    else if(fsm3.state==1 && reached){
+      fsm3.new_state=2;
+      reached=false;
+    }
+    else if(fsm3.state== 2 && !c_open && fsm3.tis > 500){   // We need to change this later
+      fsm3.new_state=3;
+    }
+    else if(fsm3.state==3 && fsm4.state==7 ){ 
+      fsm3.new_state=4;
+    }
+    else if(fsm3.state==4 && targetComplete< numTargets){
+      fsm3.new_state=1;
+    }
+    else if(fsm3.state==4 && targetComplete>= numTargets){
+      fsm3.new_state=5;
+    }
+    else if(fsm3.state==5){
+      fsm3.new_state=0;
+    }
+
+    //Piece State machine 4
+    if(fsm4.state==0 && fsm3.state==3){
+      fsm4.new_state=1;
+    }
+    else if(fsm4.state==1 && reached){
+      fsm4.new_state=2;
+      reached=false;
+    }
+    else if(fsm4.state== 2 && color==1){
+      fsm4.new_state=3;
+    }
+    else if(fsm4.state==2 && color==2){
+      fsm4.new_state=4;
+    }
+    else if(fsm4.state==2 && color==3){
+      fsm4.new_state=5;
+    }
+    else if((fsm4.state==3 && reached) || (fsm4.state==4 && reached) || (fsm4.state==5 && reached)){
+      fsm4.new_state=6;
+      reached=false;
+    }
+    else if(fsm4.state==6 && c_open){
+      fsm4.new_state=7;
+    }
+    else if(fsm4.state==7){
+      fsm4.new_state=0;
+    }
+    set_state(fsm1, fsm1.new_state);
+    set_state(fsm2, fsm2.new_state);
+    set_state(fsm3, fsm3.new_state);
+    set_state(fsm4, fsm4.new_state);
+
+    //Actions
+    if(fsm1.state==0){
+    }
+    //fsm2
+    if(fsm2.state==0){}
+    else if(fsm2.state==1){//save positions
+      start = false;
+      targetComplete = 0;
+      robot.moveToTarget(initpos, speed, cycle);
+    }
+    else if(fsm2.state==2){//move sm
+    }
+    //fsm3
+    if(fsm3.state==0){}
+    else if(fsm3.state==1){
+      Serial.println("Entering moveToTarget");
+      reached=robot.moveToTarget(targetPos, speed, cycle);
+      Serial.print("Reached: ");
+      Serial.println(reached);
+      if(reached) {
+        targetComplete++;
+        if(targetComplete < numTargets) setPosition();
+      }
+    }
+    else if(fsm3.state==2){//closeclaw
+      c_open=robot.Closeclaw();
+    }
+    else if(fsm3.state==3){//piece sm
+    }
+    else if(fsm3.state==4){//verify if there is more positions
+    }
+    else if(fsm3.state==5){//positionsended
+    }
+    //fsm4
+    if(fsm4.state==0){}
+    else if(fsm4.state==1){
+      //move 2 sensor
+      reached=robot.moveToTarget(sensorPos, speed, cycle);
+      
+    }
+    else if(fsm4.state==2){//color defining 
+      if(r > 80 || g > 80 || b > 80){
+        if(g>b && g>r) color=1;
+        else if(b>r && b>g) color = 2;
+        else if(r>g && r>b) color = 3;
+      }
+      if(fsm4.tis >= 10000) color = 3;
+    }
+    else if(fsm4.state==3){//move to green contentor 
+      reached=robot.moveToTarget(GreenPos, speed, cycle);
+    }
+    else if(fsm4.state==4){//move to blue contentor 
+      reached=robot.moveToTarget(BluePos, speed, cycle);
+    }
+    else if(fsm4.state==5){//move to red contentor 
+      reached=robot.moveToTarget(RedPos, speed, cycle);
+    }
+    else if(fsm4.state==6){//drop piece
+      c_open=robot.openclaw();
+      color=0;
+    }
+    else if(fsm4.state==7){//dropped piece
+    }
+
 
     if(serialCommand.on){
       Serial.print(" cmd: ");
@@ -188,9 +380,6 @@ void loop()
       Serial.print(serialCommand.value[numTargets][2]);
     }
     else {
-      Serial.print(" serialOn: ");
-      Serial.print(serialCommand.on);
-
       Serial.print(" tof: ");
       Serial.print(distance, 3);
 
@@ -230,139 +419,40 @@ void loop()
     Serial.print("  z_rel: ");
     Serial.print(robot.rel_z);
 
+    Serial.print("  fsm1: ");
+    Serial.print(fsm1.state);
+
+    Serial.print("  fsm2: ");
+    Serial.print(fsm2.state);
+
+    Serial.print("  fsm3: ");
+    Serial.print(fsm3.state);
+
+    Serial.print("  fsm4: ");
+    Serial.print(fsm4.state);
+
+    // Serial.print("  start: ");
+    // Serial.print(start);
+
+    // Serial.print("  c_open: ");
+    // Serial.print(c_open);
+
+    Serial.print("  R: "); Serial.print(r, DEC); Serial.print(" ");
+    Serial.print("G: "); Serial.print(g, DEC); Serial.print(" ");
+    Serial.print("B: "); Serial.print(b, DEC); Serial.print(" ");
+    // Serial.print("C: "); Serial.print(c, DEC); Serial.print(" ");
+
+    Serial.print(" c: ");
+    if (color == 1) Serial.print("green");
+    else if (color == 2) Serial.print("blue");
+    else if (color == 3) Serial.print("red");
+    else Serial.print("WTF");
+    Serial.print("Reached: ");
+    Serial.print(reached);
+
     Serial.println();
   }
-  //Mode State machine 1
-  if(fsm1.state==0 && serialCommand.command.equals("1")){
-    fsm1.new_state=1;
-  }
-  else if(fsm1.state==0 && serialCommand.command.equals("2")){
-    fsm1.new_state=2;
-  }
-  else if(fsm1.state==0 && serialCommand.command.equals("3")){
-    fsm1.new_state=3;
-  }
-   else if((fsm1.state==1 && serialCommand.command.equals("end"))||(fsm1.state==2 && serialCommand.command.equals("end"))||(fsm1.state==3 && serialCommand.command.equals("end"))){
-    fsm1.new_state=0;
-  }
-
-  //Basic Mode State machine 2
-  if(fsm2.state==0 && fsm1.state==1){
-    fsm2.new_state=1;
-  }
-  else if(fsm2.state==1 && serialCommand.command.equals("go")){
-    fsm2.new_state=2;
-  }
-  else if(fsm2.state== 1 && serialCommand.command.equals("stop")){
-    fsm2.new_state=0;
-  }
-   else if(fsm2.state==2 && fsm3.state==5){
-    fsm1.new_state=1;
-  }
-
-  //Move State machine 3
-  if(fsm3.state==0 && fsm2.state==2){
-    fsm3.new_state=1;
-  }
-  else if(fsm3.state==1 && reached){
-    fsm3.new_state=2;
-    reached==false;
-  }
-  else if(fsm3.state== 2 && !c_open){
-    fsm3.new_state=3;
-  }
-  else if(fsm3.state==3 && fsm4.state==7){
-    fsm3.new_state=4;
-  }
-   else if(fsm3.state==4 && targetComplete<= numTargets){
-    fsm3.new_state=1;
-  }
-  else if(fsm3.state==4 && targetComplete> numTargets){
-    fsm3.new_state=5;
-  }
-  else if(fsm3.state==5){
-    fsm3.new_state=0;
-  }
-
-  //Piece State machine 4
-  if(fsm4.state==0 && fsm3.state==2){
-    fsm4.new_state=1;
-  }
-  else if(fsm4.state==1 && reached){
-    fsm4.new_state=2;
-    reached=false;
-  }
-  else if(fsm4.state== 2 && color==1){
-    fsm4.new_state=3;
-  }
-  else if(fsm4.state==2 && color==2){
-    fsm4.new_state=4;
-  }
-   else if(fsm4.state==2 && color==3){
-    fsm4.new_state=5;
-  }
-   else if(fsm4.state==3 && reached || fsm4.state==4 && reached || fsm4.state==5 && reached){
-    fsm4.new_state=6;
-    reached=false;
-  }
-   else if(fsm4.state==6 && c_open){
-    fsm4.new_state=7;
-  }
-   else if(fsm4.state==7){
-    fsm4.new_state=0;
-  }
-  set_state(fsm1, fsm1.new_state);
-  set_state(fsm2, fsm2.new_state);
-  set_state(fsm3, fsm3.new_state);
-  set_state(fsm4, fsm4.new_state);
-
-  //Actions
-  if(fsm2.state==0){}
-  else if(fsm2.state==1){//save positions
-  }
-  else if(fsm2.state==2){//move sm
-  }
-  //fsm3
-   if(fsm3.state==0){}
-   else if(fsm3.state==1){
-    reached=robot.moveToTarget(targetPos, speed, cycle);
-  }
-  else if(fsm3.state==2){//closeclaw
-    c_open=robot.Closeclaw();
-  }
-   else if(fsm3.state==3){//piece sm
-  }
-   else if(fsm3.state==4){//verify if there is more positions
-  }
-  else if(fsm3.state==5){//positionsended
-  }
-  //fsm4
-   if(fsm4.state==0){}
-   else if(fsm4.state==1){
-    //move 2 sensor
-    reached=robot.moveToTarget(sensorPos, speed, cycle);
-    if(reached) {
-        if(numTargets > 0)
-          targetComplete++;
-          setPosition();
-      }
-  }
-  else if(fsm4.state==2){//color defining 
-  }
-   else if(fsm4.state==3){//move to green contentor 
-    robot.moveToTarget(GreenPos, speed, cycle);
-  }
-   else if(fsm4.state==4){//move to blue contentor 
-    robot.moveToTarget(BluePos, speed, cycle);
-  }
-  else if(fsm4.state==5){//move to red contentor 
-    robot.moveToTarget(RedPos, speed, cycle);
-  }
-  else if(fsm4.state==6){//drop piece
-    c_open=robot.openclaw();
-  }
-  else if(fsm4.state==7){//dropped piece
-  }
+  
   
 
 
@@ -372,7 +462,7 @@ void loop()
 void processChar(char b){
   switch (b)
   {
-  case '-':
+  case 'r':
     dataProcessed = 0;
     Serial.println("Delete");
     buff = "";
@@ -413,14 +503,16 @@ void processChar(char b){
         Serial.print(serialCommand.value[numTargets-1][2]); Serial.println(")");
         setPosition();
       }
-      // if(dataProcessed != 1)
-        // serialCommand.value[dataProcessed-1] = buff.toFloat();
-      // targetPos[0] = serialCommand.value[numTargets][0];
-      // targetPos[1] = serialCommand.value[numTargets][1];
-      // targetPos[2] = serialCommand.value[numTargets][2];
-      dataProcessed = 0;
-      buff = "";
     }
+    if(serialCommand.command.equals("go"))
+      start = true;
+    // if(dataProcessed != 1)
+      // serialCommand.value[dataProcessed-1] = buff.toFloat();
+    // targetPos[0] = serialCommand.value[numTargets][0];
+    // targetPos[1] = serialCommand.value[numTargets][1];
+    // targetPos[2] = serialCommand.value[numTargets][2];
+    dataProcessed = 0;
+    buff = "";
     break;
 
   case 0x20:
@@ -430,12 +522,13 @@ void processChar(char b){
     Serial.println(serialCommand.command);
     buff = "";
     dataProcessed++; // This is the address of the data
-    if(serialCommand.command.equals("go"))
-      setPosition();
+    // if(serialCommand.command.equals("go"))
+      // setPosition();
     break;
   
   case ',':
     if(dataProcessed>2) {buff = ""; break;}
+    else if(serialCommand.command.equals("save") && dataProcessed == 0) dataProcessed++;
     // serialCommand.value[dataProcessed-1] = buff.toFloat();
     serialCommand.value[numTargets][dataProcessed-1] = buff.toFloat();
     dataProcessed++;
@@ -453,11 +546,12 @@ void setPosition(void){
     targetPos[0] = serialCommand.value[targetComplete][0];
     targetPos[1] = serialCommand.value[targetComplete][1];
     targetPos[2] = serialCommand.value[targetComplete][2];
-    Serial.print("x:");
+    Serial.print("Moving to position: ");
+    Serial.print(" x:");
     Serial.print(serialCommand.value[targetComplete][0]);
-    Serial.print("y:");
+    Serial.print(" y:");
     Serial.print(serialCommand.value[targetComplete][1]);
-    Serial.print("z:");
+    Serial.print(" z:");
     Serial.print(serialCommand.value[targetComplete][2]);
   }
 }

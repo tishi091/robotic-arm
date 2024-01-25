@@ -23,7 +23,7 @@ robot_t::robot_t()
     ang_arm = PI/2;
     pwm_farm = 2070;
     ang_farm = 0;
-    pwm_claw = 560; //570 to 1630
+    pwm_claw = 604; //570 to 1630
 
     step = 11;
 }
@@ -123,6 +123,14 @@ void robot_t::sendCommand(char command)
         robot.angle2PW(decreaseAngle(robot.ang_farm), 3);
         break;
         
+        case 'o':
+        robot.oClaw();
+        break;
+        
+        case 'p':
+        robot.cClaw();
+        break;
+        
         case '+':
         robot.increaseStep();
         break;
@@ -162,6 +170,14 @@ void robot_t::sendCommand(char command)
         robot.cartesian2Angle(robot.rel_x, robot.rel_y, decrementPos(robot.rel_z));
         break;
         
+        case 'o':
+        robot.oClaw();
+        break;
+        
+        case 'p':
+        robot.cClaw();
+        break;
+        
         case '+':
         robot.increaseStep();
         break;
@@ -184,7 +200,7 @@ void robot_t::setServos(void){
     ang_arm = PI/2;
     pwm_farm = 2070;
     ang_farm = 0;
-    pwm_claw = 560;
+    pwm_claw = 604; //570 to 1630
     rel_x = 80;
     rel_y = 0;
     rel_z = 138;
@@ -192,6 +208,7 @@ void robot_t::setServos(void){
     setArm(pwm_arm);
     setFarm(pwm_farm);
     setClaw(pwm_claw);
+    
 }
 
 // ############### Incremental movement ###############
@@ -385,8 +402,8 @@ void robot_t::cartesian2Angle(float x, float y, float z)
     float hp = z - 60; // 0.060 altura até o sensor
     float s = sqrt(SQUARE(hp) + SQUARE(r));// distância garra base
     if(s >= 155) s = 155;
-    Serial.print("S is equal to: ");
-    Serial.println(s);
+    // Serial.print("S is equal to: ");
+    // Serial.println(s);
     float ecos = 1 - (SQUARE(s)/(2*SQUARE(l)));
     if(ecos <= -1) ecos = -1;
     else if(ecos >= 1) ecos = 1;
@@ -401,12 +418,12 @@ void robot_t::cartesian2Angle(float x, float y, float z)
     else if(ang_efarm >= PI/2) ang_efarm = PI/2;
     robot.ang_arm = ang_earm;          // Arm angle is q2 = 180 - (q2_1+q2_2)
     robot.ang_farm = ang_efarm; // Forearm angle is the suplementary of q1+q2
-    Serial.print("Base angle: ");
-    Serial.println(robot.ang_base);
-    Serial.print("Arm angle: ");
-    Serial.println(robot.ang_arm);
-    Serial.print("Forearm angle: ");
-    Serial.println(robot.ang_farm);
+    // Serial.print("Base angle: ");
+    // Serial.println(robot.ang_base);
+    // Serial.print("Arm angle: ");
+    // Serial.println(robot.ang_arm);
+    // Serial.print("Forearm angle: ");
+    // Serial.println(robot.ang_farm);
     inverseKin();
 }
 
@@ -441,17 +458,18 @@ void robot_t::inverseKin(void)
     angle2PW(robot.ang_base, 1);
     angle2PW(robot.ang_arm, 2);
     angle2PW(robot.ang_farm, 3);
+    angle2PW(0, 4);
 }
 bool robot_t::openclaw(){
     
-        robot.setClaw(560);
+        robot.setClaw(604);
         return true;
     
     
 }
 bool robot_t::Closeclaw(){
     
-        robot.setClaw(1630);
+        robot.setClaw(1220);
         return false;
     
     
