@@ -46,8 +46,8 @@ class robot_t{
     void moveBackwards(void);
     void moveUpwards(void);
     void moveDownward(void);
-    void closeClaw(void);
-    void openClaw(void);
+    void cClaw(void);
+    void oClaw(void);
 
     // Incremental angle movement
     float rad2Degree(float rad);
@@ -65,7 +65,8 @@ class robot_t{
     void setArm(int micros);
     void setFarm(int micros);
     void setClaw(int micros);
-
+    bool openclaw();
+    bool Closeclaw();
     void inverseKin(void);
   
     float pitagoras(float a, float b, float c);

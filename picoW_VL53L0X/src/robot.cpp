@@ -77,11 +77,11 @@ void robot_t::sendCommand(char command)
         break;
         
         case 'o':
-        robot.openClaw();
+        robot.oClaw();
         break;
         
         case 'p':
-        robot.closeClaw();
+        robot.cClaw();
         break;
         
         case '+':
@@ -247,12 +247,12 @@ void robot_t::moveUpwards(void){
     }
 }
 
-void robot_t::closeClaw(void)           // Claw
+void robot_t::cClaw(void)           // Claw
 {
     pwm_claw += step;
     claw.writeMicroseconds(pwm_claw);
 }
-void robot_t::openClaw(void)
+void robot_t::oClaw(void)
 {
     pwm_claw -= step;
     claw.writeMicroseconds(pwm_claw);
@@ -442,7 +442,20 @@ void robot_t::inverseKin(void)
     angle2PW(robot.ang_arm, 2);
     angle2PW(robot.ang_farm, 3);
 }
-
+bool robot_t::openclaw(){
+    
+        robot.setClaw(560);
+        return true;
+    
+    
+}
+bool robot_t::Closeclaw(){
+    
+        robot.setClaw(1630);
+        return false;
+    
+    
+}
 
 float robot_t::pitagoras(float a, float b, float c){
 	return sqrt(a*a+b*b+c*c);
