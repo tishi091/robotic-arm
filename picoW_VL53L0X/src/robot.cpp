@@ -171,11 +171,11 @@ void robot_t::sendCommand(char command)
         break;
         
         case 'o':
-        robot.oClaw();
+        robot.openclaw();
         break;
         
         case 'p':
-        robot.cClaw();
+        robot.Closeclaw();
         break;
         
         case '+':
@@ -357,6 +357,15 @@ void robot_t::angle2PW(float angle, int joint)
         farm.writeMicroseconds(pwm_farm);
     }
 }
+
+void robot_t::turn2Angle(float rad){
+    if(robot.ang_base >= (rad+radians(1))) {
+        robot.angle2PW(decreaseAngle(robot.ang_base), 1);
+        }
+    else if(robot.ang_base <= (rad-radians(1))) {
+        robot.angle2PW(increaseAngle(robot.ang_base), 1);
+    }
+}
 // ################################################
 
 
@@ -377,7 +386,7 @@ float robot_t::decrementPos(float pos)
 void robot_t::cartesian2Angle(float x, float y, float z)
 {   
     
-    if(x <= 1) x = 1;
+    if(x <= 0.01) x = 0.01;
     if(z <= 1) z = 1;
     else if(z >= 152) z = 152;
     
@@ -477,5 +486,12 @@ bool robot_t::Closeclaw(){
 
 float robot_t::pitagoras(float a, float b, float c){
 	return sqrt(a*a+b*b+c*c);
+}
+
+void robot_t::rad2pos(float r, float theta, float* target){
+    target[0]=r*sin(theta)*1000;
+    target[1]=-r*cos(theta)*1000;
+    target[2]=33.00;
+    
 }
 // ################################################

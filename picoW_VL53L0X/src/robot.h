@@ -55,6 +55,7 @@ class robot_t{
     float increaseAngle(float rad);
     float decreaseAngle(float rad);
     void angle2PW(float angle, int joint);
+    void turn2Angle(float angle);
     // Incremental cartesian movement
     float incrementPos(float pos);
     float decrementPos(float pos);
@@ -68,6 +69,7 @@ class robot_t{
     bool openclaw();
     bool Closeclaw();
     void inverseKin(void);
+    void rad2pos(float r, float theta, float* target);
   
     float pitagoras(float a, float b, float c);
 };
